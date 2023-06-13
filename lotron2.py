@@ -1,7 +1,7 @@
 import numpy as np
 import csv
 import pyBigWig
-
+from scipy.stats import poisson
 
 
 def average_array(array, window=None):
@@ -52,8 +52,6 @@ def bed_file_to_list(bed_file, header=False):
         return header_list, bed_list
     else:
         return bed_list
-
-import numpy as np
 
 
 
@@ -115,6 +113,12 @@ def find_enriched_regions_param_grid(array, background_list, window_list, thresh
     return enriched_regions_final
 
 
+
+def calculate_p_values(observed, expected):
+    expected_mean = expected.mean()
+    cdf = poisson.cdf(observed, expected_mean)
+    p_values = 1 - cdf
+    return p_values
 
 
 
