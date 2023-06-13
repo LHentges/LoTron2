@@ -54,6 +54,15 @@ def bed_file_to_list(bed_file, header=False):
         return bed_list
 
 
+def find_center_coord(coord_1, coord_2):
+    return int((coord_2 - coord_1) / 2) + coord_1
+
+
+def fix_coord_width(coord_1, coord_2, width):
+    center_coord = find_center_coord(coord_1, coord_2)
+    flank = int(width / 2)
+    return center_coord - flank, center_coord - flank + width
+
 
 def find_enriched_regions(array, threshold, min_region_size=0, max_region_size=None):
     truth_array = array > threshold
