@@ -2,6 +2,9 @@ import numpy as np
 import csv
 import pyBigWig
 from scipy.stats import poisson
+import pandas as pd
+import pyranges as pr
+import natsort
 
 
 def average_array(array, window=None):
@@ -65,7 +68,7 @@ def fix_coord_width(coord_1, coord_2, width):
 
 
 def find_enriched_regions(array, threshold, min_region_size=0, max_region_size=None):
-    truth_array = array > threshold
+    truth_array = (array > 0) & (array >= threshold)
     enriched_region_list = []
 
     if truth_array.any():
@@ -103,11 +106,15 @@ def find_enriched_regions(array, threshold, min_region_size=0, max_region_size=N
     return filtered_region_list
 
 
-def find_enriched_regions_param_grid(array, background_list, window_list, threshold_list, threshold_cumulative, min_region_size=0, max_region_size=None):
+def find_enriched_regions_param_grid(array, background_list, window_list, threshold_list, threshold_cumulative, min_region_size=0, max_region_size=None, background_global_min=None, return_threshold_array=False):
+
     threshold_array = np.zeros_like(array)
 
     for background in background_list:
         background_array = average_array(array, background)
+
+        if background_global_min is not None:
+            background_array[background_array < background_global_min] = background_global_min
 
         for window in window_list:
             windowed_array = average_array(array, window)
@@ -119,7 +126,11 @@ def find_enriched_regions_param_grid(array, background_list, window_list, thresh
                     threshold_array[region[0]:region[1]] += 1
     
     enriched_regions_final = find_enriched_regions(threshold_array, threshold_cumulative, min_region_size, max_region_size)
-    return enriched_regions_final
+
+    if return_threshold_array:
+        return enriched_regions_final, threshold_array
+    else:
+        return enriched_regions_final
 
 
 
@@ -183,22 +194,116 @@ class BigwigData:
         else:
             return chrom_coverage_array
         
-    def call_candidate_peaks_chrom(self, chrom_name, background_list, window_list, threshold_list, threshold_cumulative, min_region_size=0, max_region_size=None, return_chrom_stats_dict=False):
-        if return_chrom_stats_dict:
-            chrom_coverage_array, chrom_stats_dict = self.get_chrom_info_make_coverage_map(chrom_name, return_chrom_stats_dict=True)
-            enriched_regions = find_enriched_regions_param_grid(chrom_coverage_array, background_list, window_list, threshold_list, threshold_cumulative, min_region_size, max_region_size)
-            return enriched_regions, chrom_stats_dict
-        else:
-            chrom_coverage_array = self.get_chrom_info_make_coverage_map(chrom_name)
-            enriched_regions = find_enriched_regions_param_grid(chrom_coverage_array, background_list, window_list, threshold_list, threshold_cumulative, min_region_size, max_region_size)
-            return enriched_regions
+    def call_candidate_peaks_chrom(self, chrom_name, background_list, window_list, threshold_list, threshold_cumulative, min_region_size=0, max_region_size=None, background_global_min=None):
+        chrom_coverage_array = self.get_chrom_info_make_coverage_map(chrom_name)
+        if background_global_min == 'mean':
+            background_global_min = chrom_coverage_array.mean()
+        enriched_regions = find_enriched_regions_param_grid(chrom_coverage_array, background_list, window_list, threshold_list, threshold_cumulative, min_region_size, max_region_size)
+        return enriched_regions
+
+
+    # def call_candidate_peaks_chrom(self, chrom_name, background_list, window_list, threshold_list, threshold_cumulative, min_region_size=0, max_region_size=None, background_global_min=None, return_chrom_stats_dict=False):
+    #     if return_chrom_stats_dict:
+    #         chrom_coverage_array, chrom_stats_dict = self.get_chrom_info_make_coverage_map(chrom_name, return_chrom_stats_dict=True)
+    #         if background_global_min is not None:
+    #             if background_global_min == 'mean':
+    #                 background_global_min = chrom_stats_dict['chrom_mean']
+    #             elif not background_global_min.isnumeric():
+    #                 print('background_global_min must be a number, "mean", or None')
+    #                 return
+    #             enriched_regions = find_enriched_regions_param_grid(chrom_coverage_array, background_list, window_list, threshold_list, threshold_cumulative, min_region_size, max_region_size, background_global_min)
+    #         else:
+    #             enriched_regions = find_enriched_regions_param_grid(chrom_coverage_array, background_list, window_list, threshold_list, threshold_cumulative, min_region_size, max_region_size)
+    #         return enriched_regions, chrom_stats_dict
+    #     else:
+    #         chrom_coverage_array = self.get_chrom_info_make_coverage_map(chrom_name)
+    #         if background_global_min is not None:
+    #             if background_global_min == 'mean':
+    #                 background_global_min = chrom_stats_dict['chrom_mean']
+    #             elif not background_global_min.isnumeric():
+    #                 print('background_global_min must be a number, "mean", or None')
+    #                 return
+    #             enriched_regions = find_enriched_regions_param_grid(chrom_coverage_array, background_list, window_list, threshold_list, threshold_cumulative, min_region_size, max_region_size, background_global_min)
+    #         else:
+    #             enriched_regions = find_enriched_regions_param_grid(chrom_coverage_array, background_list, window_list, threshold_list, threshold_cumulative, min_region_size, max_region_size)
+    #         enriched_regions = find_enriched_regions_param_grid(chrom_coverage_array, background_list, window_list, threshold_list, threshold_cumulative, min_region_size, max_region_size)
+    #         return enriched_regions
         
-    def call_candidate_peaks_genome(self, background_list, window_list, threshold_list, threshold_cumulative, min_region_size=0, max_region_size=None, include_special_chromosomes=False):
+    def call_candidate_peaks_genome(self, background_list, window_list, threshold_list, threshold_cumulative, min_region_size=0, max_region_size=None, background_global_min=None, include_special_chromosomes=False):
         genome_stats_dict = self.get_genome_info(include_special_chromosomes)
         enriched_regions_dict = {}
         for chrom_name in genome_stats_dict:
-            enriched_regions = self.call_candidate_peaks_chrom(chrom_name, background_list, window_list, threshold_list, threshold_cumulative, min_region_size, max_region_size)
+            enriched_regions = self.call_candidate_peaks_chrom(chrom_name, background_list, window_list, threshold_list, threshold_cumulative, min_region_size, max_region_size, background_global_min)
             enriched_regions_dict[chrom_name] = enriched_regions
         return enriched_regions_dict
 
+
+    def call_candidate_peaks_lotron_chrom(self, threshold_cumulative_init, chrom, background_list, window_list, threshold_list, min_size, max_size):
         
+        threshold_limit = len(background_list)*len(window_list)*len(threshold_list)
+        threshold_cumulative = threshold_cumulative_init
+        
+        chrom_coverage_array = self.get_chrom_info_make_coverage_map(chrom)
+        enriched_regions, threshold_array = find_enriched_regions_param_grid(chrom_coverage_array, background_list, window_list, threshold_list, threshold_cumulative, return_threshold_array=True)
+
+        enriched_regions_df = pd.DataFrame(enriched_regions, columns=['Start', 'End'])
+        enriched_regions_df.insert(0, 'Chromosome', chrom)
+
+        enriched_regions_df['initial_size'] = enriched_regions_df.End - enriched_regions_df.Start
+        enriched_regions_df = enriched_regions_df.drop(enriched_regions_df[enriched_regions_df['initial_size']<min_size].index)
+        solved_df = enriched_regions_df[enriched_regions_df['initial_size']<=max_size]
+        unsolved_df = enriched_regions_df[enriched_regions_df['initial_size']>max_size]
+
+        solved_df = solved_df[['Chromosome', 'Start', 'End']]
+        unsolved_df = unsolved_df[['Chromosome', 'Start', 'End']]
+
+        while (not unsolved_df.empty) and (threshold_cumulative < threshold_limit-1):
+
+            # sort unsolved_df by Start
+            unsolved_df = unsolved_df.sort_values(['Chromosome', 'Start'])
+            unsolved_df.reset_index(drop=True, inplace=True)
+            unsolved_df['unsolved_idx'] = unsolved_df.index
+
+            # rerun test with higher threshold
+            threshold_cumulative += 1
+            enriched_regions_higher_thresh = find_enriched_regions(threshold_array, threshold_cumulative)
+            enriched_regions_higher_thresh_df = pd.DataFrame(enriched_regions_higher_thresh, columns=['Start', 'End'])
+            enriched_regions_higher_thresh_df.insert(0, 'Chromosome', chrom)
+
+            # use pyranges to find overlaps between unsolved regions and enriched regions at a higher threshold
+            unsolved_pr = pr.PyRanges(unsolved_df)
+            enriched_regions_higher_thresh_pr = pr.PyRanges(enriched_regions_higher_thresh_df)
+            prs_for_overlap_dict = {k: v for k, v in zip(['enriched initial', 'enriched higher thresh'], [unsolved_pr, enriched_regions_higher_thresh_pr])}
+            overlap_counts_df = pr.count_overlaps(prs_for_overlap_dict).as_df()
+            overlap_counts_df['size'] = overlap_counts_df.End - overlap_counts_df.Start
+
+            # find regions that are enriched initially, but not enriched at any coordinates with higher threshold
+            single_enriched_df = overlap_counts_df[(overlap_counts_df['enriched initial'] == 1) & (overlap_counts_df['enriched higher thresh'] == 0)]
+            single_enriched_df = pd.merge(single_enriched_df, unsolved_df, on=['Chromosome', 'Start', 'End'], how='inner', suffixes=('_single_enriched', '_unsolved'))
+            solved_df = pd.concat([solved_df, unsolved_df.loc[single_enriched_df['unsolved_idx']]], join='inner')
+            unsolved_df.drop(single_enriched_df['unsolved_idx'], inplace=True)
+
+            # find regions that are both enriched initially and enriched at coordinates with higher threshold
+            double_enriched_df = overlap_counts_df[(overlap_counts_df['enriched initial'] == 1) & (overlap_counts_df['enriched higher thresh'] == 1)]
+            double_enriched_df = pd.merge_asof(double_enriched_df, unsolved_df, on='Start', by='Chromosome', suffixes=('_double_enriched', '_unsolved'))
+            double_enriched_df['End'] = double_enriched_df['End_double_enriched']
+            double_enriched_df['below_max_size'] = double_enriched_df['size'] < max_size
+
+            solved_df = pd.concat([solved_df, double_enriched_df[double_enriched_df['below_max_size']]], join='inner')
+            unsolved_df.drop(double_enriched_df[double_enriched_df['below_max_size']]['unsolved_idx'].unique(), inplace=True)
+            unsolved_df = unsolved_df[['Chromosome', 'Start', 'End']]
+
+        solved_df = pd.concat([solved_df, unsolved_df])
+        return solved_df.sort_values('Start').reset_index(drop=True)
+    
+    def call_candidate_peaks_lotron_genome(self, threshold_cumulative_init, background_list, window_list, threshold_list, min_size, max_size, include_special_chromosomes=False):
+        total_df = pd.DataFrame(columns=['Chromosome', 'Start', 'End'])
+        chrom_list = self.get_genome_info(include_special_chromosomes=include_special_chromosomes).keys()
+        for chrom in natsort.natsorted(chrom_list):
+            chrom_df = self.call_candidate_peaks_lotron_chrom(threshold_cumulative_init, chrom, background_list, window_list, threshold_list, min_size, max_size)
+            total_df = pd.concat([total_df, chrom_df])
+        return total_df
+
+
+        
+
