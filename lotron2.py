@@ -277,11 +277,10 @@ class BigwigData:
             overlap_counts_df = pr.count_overlaps(prs_for_overlap_dict).as_df()
             overlap_counts_df['size'] = overlap_counts_df.End - overlap_counts_df.Start
 
-            # find regions that are enriched initially, but not enriched at any coordinates with higher threshold
+            # find regions that are enriched initially but are lost at a higher threshold, and add them to solved_df
             single_enriched_df = overlap_counts_df[(overlap_counts_df['enriched initial'] == 1) & (overlap_counts_df['enriched higher thresh'] == 0)]
             single_enriched_df = pd.merge(single_enriched_df, unsolved_df, on=['Chromosome', 'Start', 'End'], how='inner', suffixes=('_single_enriched', '_unsolved'))
             solved_df = pd.concat([solved_df, unsolved_df.loc[single_enriched_df['unsolved_idx']]], join='inner')
-            unsolved_df.drop(single_enriched_df['unsolved_idx'], inplace=True)
 
             # find regions that are both enriched initially and enriched at coordinates with higher threshold
             double_enriched_df = overlap_counts_df[(overlap_counts_df['enriched initial'] == 1) & (overlap_counts_df['enriched higher thresh'] == 1)]
@@ -289,8 +288,10 @@ class BigwigData:
             double_enriched_df['End'] = double_enriched_df['End_double_enriched']
             double_enriched_df['below_max_size'] = double_enriched_df['size'] < max_size
 
+            # add double enriched regions that are below max size to solved_df
+            # regions above max size become new unsolved_df
             solved_df = pd.concat([solved_df, double_enriched_df[double_enriched_df['below_max_size']]], join='inner')
-            unsolved_df.drop(double_enriched_df[double_enriched_df['below_max_size']]['unsolved_idx'].unique(), inplace=True)
+            unsolved_df = double_enriched_df[~double_enriched_df['below_max_size']]
             unsolved_df = unsolved_df[['Chromosome', 'Start', 'End']]
 
         solved_df = pd.concat([solved_df, unsolved_df])
