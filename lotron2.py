@@ -57,6 +57,28 @@ def bed_file_to_list(bed_file, header=False):
         return bed_list
 
 
+
+def make_chrom_list_from_bed(bed_file, include_special_chromosomes=False):
+    chrom_list = []
+    with open(bed_file, 'r') as f:
+        bed_reader = csv.reader(f, delimiter='\t')
+        for row in bed_reader:
+            if include_special_chromosomes or (not row[0].startswith('chrUn')) and ('_' not in row[0]) and (row[0] != 'chrM') and (row[0] != 'chrEBV'):
+                chrom_list.append(row[0])
+    return list(set(chrom_list))
+
+
+
+def make_chrom_list_from_bigwig(bigwig_file, include_special_chromosomes=False):
+    chrom_list = []
+    pybw_object = pyBigWig.open(bigwig_file)
+    for chrom_name in pybw_object.chroms():
+        if include_special_chromosomes or (not chrom_name.startswith('chrUn')) and ('_' not in chrom_name) and (chrom_name != 'chrM') and (chrom_name != 'chrEBV'):
+            chrom_list.append(chrom_name)
+    pybw_object.close()
+    return chrom_list
+
+
 def find_center_coord(coord_1, coord_2):
     return int((coord_2 - coord_1) / 2) + coord_1
 
@@ -156,15 +178,19 @@ class BigwigData:
         }
         pybw.close()
         return chrom_stats_dict
-
-    def get_genome_info(self, include_special_chromosomes=False):
-        genome_stats_dict = {}
+    
+    def make_chrom_list(self, include_special_chromosomes=False):
         chrom_list = []
         pybw_object = pyBigWig.open(self.bigwig_file)
         for chrom_name in pybw_object.chroms():
             if include_special_chromosomes or (not chrom_name.startswith('chrUn')) and ('_' not in chrom_name) and (chrom_name != 'chrM') and (chrom_name != 'chrEBV'):
                 chrom_list.append(chrom_name)
         pybw_object.close()
+        return chrom_list
+
+    def get_genome_info(self, include_special_chromosomes=False):
+        genome_stats_dict = {}
+        chrom_list = make_chrom_list_from_bigwig(self.bigwig_file, include_special_chromosomes)
         for chrom_name in chrom_list:
             chrom_stats_dict = self.get_chrom_info(chrom_name)
             genome_stats_dict[chrom_name] = chrom_stats_dict
@@ -230,9 +256,9 @@ class BigwigData:
     #         return enriched_regions
         
     def call_candidate_peaks_genome(self, background_list, window_list, threshold_list, threshold_cumulative, min_region_size=0, max_region_size=None, background_global_min=None, include_special_chromosomes=False):
-        genome_stats_dict = self.get_genome_info(include_special_chromosomes)
+        chrom_list = make_chrom_list_from_bigwig(self.bigwig_file, include_special_chromosomes)
         enriched_regions_dict = {}
-        for chrom_name in genome_stats_dict:
+        for chrom_name in chrom_list:
             enriched_regions = self.call_candidate_peaks_chrom(chrom_name, background_list, window_list, threshold_list, threshold_cumulative, min_region_size, max_region_size, background_global_min)
             enriched_regions_dict[chrom_name] = enriched_regions
         return enriched_regions_dict
