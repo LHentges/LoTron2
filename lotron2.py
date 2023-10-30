@@ -299,11 +299,11 @@ class BigwigData:
         solved_df = pd.concat([solved_df, unsolved_df])
         return solved_df.sort_values('Start').reset_index(drop=True)
     
-    def call_candidate_peaks_lotron_genome(self, threshold_cumulative_init, background_list, window_list, threshold_list, min_size, max_size, include_special_chromosomes=False):
+    def call_candidate_peaks_lotron_genome(self, threshold_cumulative_init, background_list, window_list, threshold_list, min_size, max_size, include_special_chromosomes=False, background_global_min=None):
         total_df = pd.DataFrame(columns=['Chromosome', 'Start', 'End'])
         chrom_list = self.get_genome_info(include_special_chromosomes=include_special_chromosomes).keys()
         for chrom in natsort.natsorted(chrom_list):
-            chrom_df = self.call_candidate_peaks_lotron_chrom(threshold_cumulative_init, chrom, background_list, window_list, threshold_list, min_size, max_size)
+            chrom_df = self.call_candidate_peaks_lotron_chrom(threshold_cumulative_init, chrom, background_list, window_list, threshold_list, min_size, max_size, background_global_min=background_global_min)
             total_df = pd.concat([total_df, chrom_df])
         return total_df
 
