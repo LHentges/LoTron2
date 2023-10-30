@@ -238,15 +238,14 @@ class BigwigData:
         return enriched_regions_dict
 
 
-    def call_candidate_peaks_lotron_chrom(self, threshold_cumulative_init, chrom, background_list, window_list, threshold_list, min_size, max_size, background_global_min=None):
+    def call_candidate_peaks_from_coverage_array(self, threshold_cumulative_init, chrom, coverage_array, background_list, window_list, threshold_list, min_size, max_size, background_global_min=None):
         
         threshold_limit = len(background_list)*len(window_list)*len(threshold_list)
         threshold_cumulative = threshold_cumulative_init
         
-        chrom_coverage_array = self.get_chrom_info_make_coverage_map(chrom)
         if background_global_min == 'mean':
-            background_global_min = chrom_coverage_array.mean()
-        enriched_regions, threshold_array = find_enriched_regions_param_grid(chrom_coverage_array, background_list, window_list, threshold_list, threshold_cumulative, return_threshold_array=True, background_global_min=background_global_min)
+            background_global_min = coverage_array.mean()
+        enriched_regions, threshold_array = find_enriched_regions_param_grid(coverage_array, background_list, window_list, threshold_list, threshold_cumulative, return_threshold_array=True, background_global_min=background_global_min)
 
         enriched_regions_df = pd.DataFrame(enriched_regions, columns=['Start', 'End'])
         enriched_regions_df.insert(0, 'Chromosome', chrom)
@@ -298,6 +297,12 @@ class BigwigData:
 
         solved_df = pd.concat([solved_df, unsolved_df])
         return solved_df.sort_values('Start').reset_index(drop=True)
+
+    def call_candidate_peaks_lotron_chrom(self, threshold_cumulative_init, chrom, background_list, window_list, threshold_list, min_size, max_size, background_global_min=None):
+        
+        chrom_coverage_array = self.get_chrom_info_make_coverage_map(chrom)
+        candidate_peaks_df = self.call_candidate_peaks_from_coverage_array(threshold_cumulative_init, chrom, chrom_coverage_array, background_list, window_list, threshold_list, min_size, max_size, background_global_min=background_global_min)
+        return candidate_peaks_df
     
     def call_candidate_peaks_lotron_genome(self, threshold_cumulative_init, background_list, window_list, threshold_list, min_size, max_size, include_special_chromosomes=False, background_global_min=None):
         total_df = pd.DataFrame(columns=['Chromosome', 'Start', 'End'])
