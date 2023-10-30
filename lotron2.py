@@ -88,6 +88,15 @@ def fix_coord_width(coord_1, coord_2, width):
     return center_coord - flank, center_coord - flank + width
 
 
+def find_summits(coverage_array, enriched_region_coord_list):
+    summit_list = []
+    for region in enriched_region_coord_list:
+        region_array = coverage_array[region[0]:region[1]]
+        max_index = np.argmax(region_array)
+        summit_list.append(region[0] + max_index)
+    return summit_list
+
+
 def find_enriched_regions(array, threshold, min_region_size=0, max_region_size=None):
     truth_array = (array > 0) & (array >= threshold)
     enriched_region_list = []
