@@ -214,6 +214,7 @@ def find_and_score_peaks_genome(bigwig_file, threshold_cumulative_init, backgrou
         else:
             scores_total_df = pd.concat([scores_total_df, scores_chrom_df])
     if scores_total_df is not None:
+        scores_total_df.reset_index(drop=True, inplace=True)
         scores_total_df.insert(3, 'Region_id', scores_total_df.index)
     return scores_total_df
 
